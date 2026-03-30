@@ -337,7 +337,7 @@ function OntologyNode({ data, selected }: { data: NodeData; selected?: boolean }
   return (
     <div
       className={cn(
-        'w-52 rounded-lg border-2 shadow-lg transition-colors duration-200',
+        'w-52 rounded-2xl border-2 shadow-lg transition-colors duration-200',
         'bg-card backdrop-blur-sm border-primary/40',
         selected                        && 'node-blink',
         isRelated && !selected          && 'node-related-blink',
