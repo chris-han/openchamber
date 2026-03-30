@@ -17,6 +17,7 @@ import {
 import { SortableTabsStrip, type SortableTabsStripItem } from '@/components/ui/sortable-tabs-strip';
 
 import { RiArrowLeftSLine, RiChat4Line, RiChatNewLine, RiCheckLine, RiCloseLine, RiCommandLine, RiFileTextLine, RiFolder6Line, RiGitBranchLine, RiGithubFill, RiLayoutLeftLine, RiLayoutRightLine, RiPlayListAddLine, RiRefreshLine, RiServerLine, RiStackLine, RiTerminalBoxLine, RiTimerLine, type RemixiconComponentType } from '@remixicon/react';
+import { LayoutTemplate } from 'lucide-react';
 import { DiffIcon } from '@/components/icons/DiffIcon';
 import { useUIStore, type MainTab } from '@/stores/useUIStore';
 import { useConfigStore } from '@/stores/useConfigStore';
@@ -237,6 +238,8 @@ export const Header: React.FC<HeaderProps> = ({
   const activeMainTab = useUIStore((state) => state.activeMainTab);
   const setActiveMainTab = useUIStore((state) => state.setActiveMainTab);
   const shortcutOverrides = useUIStore((state) => state.shortcutOverrides);
+  const currentLayout = useUIStore((state) => state.currentLayout);
+  const setCurrentLayout = useUIStore((state) => state.setCurrentLayout);
 
   const { getCurrentModel } = useConfigStore();
   const runtimeApis = useRuntimeAPIs();
@@ -1653,6 +1656,40 @@ export const Header: React.FC<HeaderProps> = ({
           <p>Right sidebar ({shortcutLabel('toggle_right_sidebar')})</p>
         </TooltipContent>
       </Tooltip>
+      <DropdownMenu>
+        <Tooltip delayDuration={500}>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label="Switch UI layout"
+                className={desktopHeaderIconButtonClass}
+              >
+                <LayoutTemplate className="h-[18px] w-[18px]" />
+              </button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Switch UI layout</p>
+          </TooltipContent>
+        </Tooltip>
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuItem
+            onClick={() => setCurrentLayout('semantier')}
+            className={currentLayout === 'semantier' ? 'bg-accent' : ''}
+          >
+            <span>Semantier Studio</span>
+            {currentLayout === 'semantier' ? <span className="ml-auto text-xs">✓</span> : null}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => setCurrentLayout('main')}
+            className={currentLayout === 'main' ? 'bg-accent' : ''}
+          >
+            <span>Original Dev UI</span>
+            {currentLayout === 'main' ? <span className="ml-auto text-xs">✓</span> : null}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
       {renderDesktopGitHubControl()}
     </>
   );

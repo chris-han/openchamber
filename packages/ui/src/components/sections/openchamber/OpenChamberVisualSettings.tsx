@@ -466,41 +466,6 @@ export const OpenChamberVisualSettings: React.FC<OpenChamberVisualSettingsProps>
                                 </div>
                             </div>
 
-                            {/* Theme Preset Toggle */}
-                            <div className="flex items-center gap-2 py-1.5 flex-wrap">
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => {
-                                        // Toggle to Semantier theme
-                                        setLightThemePreference('semantier-light');
-                                        setDarkThemePreference('semantier-dark');
-                                    }}
-                                    className={cn(
-                                        lightThemeId === 'semantier-light' && darkThemeId === 'semantier-dark'
-                                            ? 'border-[var(--primary-base)] text-[var(--primary-base)] bg-[var(--primary-base)]/10'
-                                            : ''
-                                    )}
-                                >
-                                    Semantier (Teal)
-                                </Button>
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => {
-                                        // Toggle to Flexoki theme
-                                        setLightThemePreference('flexoki-light');
-                                        setDarkThemePreference('flexoki-dark');
-                                    }}
-                                    className={cn(
-                                        lightThemeId === 'flexoki-light' && darkThemeId === 'flexoki-dark'
-                                            ? 'border-[var(--primary-base)] text-[var(--primary-base)] bg-[var(--primary-base)]/10'
-                                            : ''
-                                    )}
-                                >
-                                    Original OpenChamber
-                                </Button>
-                            </div>
                             <div className="flex items-center gap-2 py-1.5">
                                 <button
                                     type="button"
