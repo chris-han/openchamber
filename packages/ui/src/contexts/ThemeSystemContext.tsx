@@ -137,6 +137,24 @@ const isValidCustomTheme = (value: unknown): value is Theme => {
   return variant === 'light' || variant === 'dark';
 };
 
+// Migrate old Flexoki theme IDs to new Semantier (OpenChamber) defaults
+const migrateOldThemeIds = (lightId: string | null, darkId: string | null): { lightId: string | null; darkId: string | null } => {
+  const fleksokiLightToNew: { [key: string]: string } = {
+    'flexoki-light': DEFAULT_LIGHT_ID,
+    'app-light': DEFAULT_LIGHT_ID,
+  };
+
+  const fleksokiDarkToNew: { [key: string]: string } = {
+    'flexoki-dark': DEFAULT_DARK_ID,
+    'app-dark': DEFAULT_DARK_ID,
+  };
+
+  return {
+    lightId: lightId && fleksokiLightToNew[lightId] ? fleksokiLightToNew[lightId] : lightId,
+    darkId: darkId && fleksokiDarkToNew[darkId] ? fleksokiDarkToNew[darkId] : darkId,
+  };
+};
+
 const buildInitialPreferences = (defaultThemeId?: string): ThemePreferences => {
   let lightThemeId: string = DEFAULT_LIGHT_ID;
   let darkThemeId: string = DEFAULT_DARK_ID;
@@ -144,8 +162,13 @@ const buildInitialPreferences = (defaultThemeId?: string): ThemePreferences => {
 
   if (typeof window !== 'undefined') {
     const storedMode = localStorage.getItem('themeMode');
-    const storedLightId = localStorage.getItem('lightThemeId');
-    const storedDarkId = localStorage.getItem('darkThemeId');
+    let storedLightId = localStorage.getItem('lightThemeId');
+    let storedDarkId = localStorage.getItem('darkThemeId');
+
+    // Apply migration from old Flexoki IDs to new defaults
+    const migrated = migrateOldThemeIds(storedLightId, storedDarkId);
+    storedLightId = migrated.lightId;
+    storedDarkId = migrated.darkId;
     const legacyUseSystem = localStorage.getItem('useSystemTheme');
     const legacyThemeId = localStorage.getItem('selectedThemeId');
     const legacyVariant = localStorage.getItem('selectedThemeVariant');
