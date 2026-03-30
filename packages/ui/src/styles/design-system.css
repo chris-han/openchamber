@@ -322,6 +322,18 @@
   --font-family-mono: var(--font-mono);
 }
 
+/* Force tighter corners globally for Tailwind rounded utilities. */
+@layer utilities {
+  .rounded-none { border-radius: 0 !important; }
+  .rounded-sm { border-radius: 1px !important; }
+  .rounded { border-radius: 2px !important; }
+  .rounded-md { border-radius: 4px !important; }
+  .rounded-lg { border-radius: 6px !important; }
+  .rounded-xl { border-radius: 8px !important; }
+  .rounded-2xl { border-radius: 10px !important; }
+  .rounded-3xl { border-radius: 12px !important; }
+}
+
 /* Agent color system using theme variables */
 @layer components {
   /* Agent color variants - each maps to theme colors */
