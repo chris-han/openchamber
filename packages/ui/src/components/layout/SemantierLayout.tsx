@@ -4,7 +4,8 @@ import { GripVerticalIcon } from 'lucide-react'
 import { Header } from '@/components/semantier/header'
 import { ResourceExplorer, type TreeNode } from '@/components/semantier/resource-explorer'
 import { SemanticEditor } from '@/components/semantier/semantic-editor'
-import { PropertiesPanel } from '@/components/semantier/properties-panel'
+import { ChatView } from '@/components/views'
+import { useSdslContextInjector } from '@/hooks/useSdslContextInjector'
 
 /** Resize handle that matches the v0 ResizableHandle withHandle style */
 function ResizeHandle() {
@@ -20,19 +21,17 @@ function ResizeHandle() {
 export function SemantierLayout() {
   const [selectedId, setSelectedId] = useState<string | null>('contract')
   const [selectedItem, setSelectedItem] = useState<TreeNode | null>(null)
-  const [selectedGraphItem, setSelectedGraphItem] = useState<{
-    type: 'node' | 'edge'
-    data: any
-  } | null>(null)
+
+  // Phase 2: inject SDSL buffer changes silently into the active session context
+  useSdslContextInjector()
 
   const handleSelectNode = useCallback((_id: string, node: TreeNode) => {
     setSelectedItem(node)
     setSelectedId(node.id)
   }, [])
 
-  const handleSelectGraphItem = useCallback((type: 'node' | 'edge', data: any) => {
-    setSelectedGraphItem(data ? { type, data } : null)
-    if (type === 'node' && data?.id) setSelectedId(data.id)
+  const handleSelectGraphItem = useCallback((_type: 'node' | 'edge', data: any) => {
+    if (_type === 'node' && data?.id) setSelectedId(data.id)
   }, [])
 
   return (
@@ -65,13 +64,10 @@ export function SemantierLayout() {
 
           <ResizeHandle />
 
-          {/* ── Right: property inspector ── */}
-          <Panel defaultSize={300} minSize={250} maxSize={400}>
-            <div className="h-full overflow-hidden">
-              <PropertiesPanel
-                selectedItem={selectedItem}
-                selectedGraphItem={selectedGraphItem}
-              />
+          {/* ── Right: AI copilot chat sidebar ── */}
+          <Panel defaultSize={300} minSize={250} maxSize={500}>
+            <div className="h-full overflow-hidden border-l border-border">
+              <ChatView />
             </div>
           </Panel>
         </Group>

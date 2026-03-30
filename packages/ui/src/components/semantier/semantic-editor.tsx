@@ -1,11 +1,25 @@
-import { cn } from '@/lib/utils'
-import { Lock, Unlock } from 'lucide-react'
+import { useEffect, useRef, useCallback, useState } from 'react'
+import Editor, { useMonaco } from '@monaco-editor/react'
+import type * as MonacoNS from 'monaco-editor'
+import { Lock, Sparkles, Loader2 } from 'lucide-react'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import type { TreeNode } from './resource-explorer'
 import { OntologyGraph } from './ontology-graph'
+import { useSdslStore } from '@/stores/useSdslStore'
+import {
+  SDSL_LANGUAGE_ID,
+  monarchTokensProvider,
+  languageConfiguration,
+  semantierDarkTheme,
+} from '@/lib/sdsl-language'
+import { useToolEventGlyphs } from '@/hooks/useToolEventGlyphs'
+import { opencodeClient } from '@/lib/opencode/client'
+import { useSessionStore } from '@/stores/useSessionStore'
+import { useConfigStore } from '@/stores/useConfigStore'
 
-/* ── Logic Weave source (display-only) ── */
+/* ── Static logic weave sample shown on the "逻辑织入" tab ── */
 const logicWeaveCode = `// 合同完成事件处理逻辑
 WHEN Contract.status CHANGES TO "completed":
 
@@ -37,41 +51,180 @@ WHEN Contract.status CHANGES TO "completed":
       == tax:TaxObligation.taxableAmount
   }`
 
-/* ── JSON-Schema / Datalog source (display-only) ── */
-const jsonSchemaCode = `{
-  "$schema": "https://semantier.io/ontology/v2",
-  "namespace": "core",
-  "version": "2.1.0",
-  "entities": {
-    "Contract": {
-      "type": "entity",
-      "prefix": "core:",
-      "properties": {
-        "contractId": { "type": "string", "format": "uuid", "required": true, "indexed": true },
-        "amount":     { "type": "decimal", "precision": 18, "scale": 2, "required": true },
-        "status":     { "type": "enum", "values": ["draft","active","completed","cancelled"], "required": true, "default": "draft" },
-        "signDate":   { "type": "date", "required": false }
-      },
-      "dimensions": ["core:Actor", "mgt:Project", "mgt:CostCenter"],
-      "events": {
-        "onComplete": {
-          "triggers": ["fin:RevenueRecognition", "tax:TaxObligation"]
-        }
-      }
-    }
-  }
-}`
-
 interface SemanticEditorProps {
   selectedItem: TreeNode | null
   onGraphSelectItem?: (type: 'node' | 'edge', data: any) => void
 }
 
 export function SemanticEditor({ selectedItem, onGraphSelectItem }: SemanticEditorProps) {
+  const monaco = useMonaco()
+  const editorRef = useRef<MonacoNS.editor.IStandaloneCodeEditor | null>(null)
+  const monacoRef = useRef<typeof MonacoNS | null>(null)
+  const buffer = useSdslStore((s) => s.buffer)
+  const setBuffer = useSdslStore((s) => s.setBuffer)
+  const ghostText = useSdslStore((s) => s.ghostText)
+  const setGhostText = useSdslStore((s) => s.setGhostText)
+  const acceptGhostText = useSdslStore((s) => s.acceptGhostText)
+  const rejectGhostText = useSdslStore((s) => s.rejectGhostText)
+  const decorationsRef = useRef<string[]>([])
+  const [isSuggesting, setIsSuggesting] = useState(false)
+
+  // Keep monacoRef in sync with monaco from hook (needed by useToolEventGlyphs)
+  useEffect(() => {
+    monacoRef.current = monaco as any
+  }, [monaco])
+
+  // Phase 2 — wire tool events to Monaco glyph margin
+  useToolEventGlyphs(editorRef, monacoRef)
+
+  /* Register SDSL language and theme when Monaco loads */
+  useEffect(() => {
+    if (!monaco) return
+
+    // Only register once
+    const existing = monaco.languages.getLanguages().find((l) => l.id === SDSL_LANGUAGE_ID)
+    if (!existing) {
+      monaco.languages.register({ id: SDSL_LANGUAGE_ID, extensions: ['.sdsl'] })
+      monaco.languages.setMonarchTokensProvider(SDSL_LANGUAGE_ID, monarchTokensProvider as any)
+      monaco.languages.setLanguageConfiguration(SDSL_LANGUAGE_ID, languageConfiguration as any)
+    }
+
+    const existingTheme = (monaco.editor as any)._themeService?.getColorTheme?.()?.themeName
+    if (existingTheme !== 'semantier-dark') {
+      monaco.editor.defineTheme('semantier-dark', semantierDarkTheme)
+    }
+    monaco.editor.setTheme('semantier-dark')
+  }, [monaco])
+
+  /* Render ghost-text as an inline decoration */
+  useEffect(() => {
+    const editor = editorRef.current
+    if (!editor || !monaco) return
+
+    // Clear previous ghost text decorations
+    decorationsRef.current = editor.deltaDecorations(decorationsRef.current, [])
+
+    if (!ghostText) return
+
+    const text = ghostText.text
+    const line = ghostText.line
+    const col = ghostText.column
+
+    decorationsRef.current = editor.deltaDecorations([], [
+      {
+        range: new monaco.Range(line, col, line, col),
+        options: {
+          after: {
+            content: text,
+            inlineClassName: 'sdsl-ghost-text',
+          },
+        },
+      },
+    ])
+  }, [ghostText, monaco])
+
+  /* Accept ghost text on Tab, reject on Escape */
+  useEffect(() => {
+    const editor = editorRef.current
+    if (!editor || !ghostText) return
+
+    const disposable = editor.onKeyDown((e: MonacoNS.IKeyboardEvent) => {
+      if (e.keyCode === (monaco?.KeyCode.Tab ?? 2)) {
+        e.preventDefault()
+        e.stopPropagation()
+        acceptGhostText()
+      } else if (e.keyCode === (monaco?.KeyCode.Escape ?? 9)) {
+        rejectGhostText()
+      }
+    })
+
+    return () => disposable.dispose()
+  }, [ghostText, monaco, acceptGhostText, rejectGhostText])
+
+  const handleEditorMount = useCallback(
+    (editor: MonacoNS.editor.IStandaloneCodeEditor) => {
+      editorRef.current = editor
+    },
+    [],
+  )
+
+  /**
+   * Phase 2 — structured SDSL suggestion via session.prompt with JSON schema.
+   * Calls the active AI session and asks for a ghost-text SDSL completion.
+   */
+  const requestSdslSuggestion = useCallback(async () => {
+    const sessionId = useSessionStore.getState().currentSessionId
+    if (!sessionId) return
+    const { currentProviderId: providerID, currentModelId: modelID } =
+      useConfigStore.getState()
+    if (!providerID || !modelID) return
+
+    setIsSuggesting(true)
+    try {
+      const prompt = [
+        '根据以下 SDSL 缓冲区内容，在最合适的位置提供一个新的 SDSL 代码补全建议。',
+        '只补全缺失的内容，不要重复已有代码。',
+        '',
+        '```sdsl',
+        buffer.trim(),
+        '```',
+      ].join('\n')
+
+      const schema = {
+        type: 'object',
+        properties: {
+          line: {
+            type: 'integer',
+            description: '建议插入的 1-based 行号（通常是最后一行的下一行）',
+          },
+          column: {
+            type: 'integer',
+            description: '建议插入的 1-based 列号（通常为 1）',
+          },
+          text: {
+            type: 'string',
+            description: '建议补全的 SDSL 代码片段',
+          },
+        },
+        required: ['line', 'column', 'text'],
+        additionalProperties: false,
+      }
+
+      const response = await (
+        opencodeClient.getApiClient().session.prompt as Function
+      )({
+        sessionID: sessionId,
+        model: { providerID, modelID },
+        format: { type: 'json_schema', schema, retryCount: 2 },
+        parts: [{ type: 'text', text: prompt, synthetic: false }],
+      })
+
+      const info = (response?.data?.info ?? {}) as Record<string, unknown>
+      const structured =
+        (info.structured_output ?? info.structured) as {
+          line?: number
+          column?: number
+          text?: string
+        } | undefined
+
+      if (structured?.text && structured.line) {
+        setGhostText({
+          line: structured.line,
+          column: structured.column ?? 1,
+          text: structured.text,
+        })
+      }
+    } catch {
+      // Suggestion is best-effort
+    } finally {
+      setIsSuggesting(false)
+    }
+  }, [buffer, setGhostText])
+
   return (
-    <div className="h-full flex flex-col bg-editor-bg">
+    <div className="h-full flex flex-col bg-[var(--editor-bg,#1a1b26)]">
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-card">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-card shrink-0">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">
             {selectedItem ? (
@@ -80,17 +233,43 @@ export function SemanticEditor({ selectedItem, onGraphSelectItem }: SemanticEdit
                 {selectedItem.name}
               </>
             ) : (
-              '本体图形编辑器'
+              'SDSL 编辑器'
             )}
           </span>
           {selectedItem?.version && (
             <Badge variant="secondary" className="text-xs">{selectedItem.version}</Badge>
           )}
         </div>
+        <div className="flex items-center gap-2">
+          {ghostText && (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span>AI 建议</span>
+              <kbd className="px-1.5 py-0.5 bg-muted rounded text-xs">Tab</kbd>
+              <span>接受</span>
+              <kbd className="px-1.5 py-0.5 bg-muted rounded text-xs">Esc</kbd>
+              <span>拒绝</span>
+            </div>
+          )}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 gap-1.5 text-xs"
+            disabled={isSuggesting}
+            onClick={requestSdslSuggestion}
+            title="AI SDSL 建议"
+          >
+            {isSuggesting ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5" />
+            )}
+            建议
+          </Button>
+        </div>
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="schema" className="flex-1 flex flex-col overflow-hidden">
+      <Tabs defaultValue="schema" className="flex-1 flex flex-col overflow-hidden min-h-0">
         <TabsList className="w-full justify-start rounded-none border-b border-border bg-card px-4 h-auto py-0 shrink-0">
           <TabsTrigger
             value="schema"
@@ -108,7 +287,7 @@ export function SemanticEditor({ selectedItem, onGraphSelectItem }: SemanticEdit
             value="code"
             className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2.5 text-sm"
           >
-            代码视图
+            SDSL 编辑器
           </TabsTrigger>
         </TabsList>
 
@@ -117,60 +296,60 @@ export function SemanticEditor({ selectedItem, onGraphSelectItem }: SemanticEdit
           <OntologyGraph onSelectItem={onGraphSelectItem} />
         </TabsContent>
 
-        {/* ── 逻辑织入 ── */}
-        <TabsContent value="logic" className="flex-1 m-0 p-4 overflow-auto">
-          <div className="max-w-4xl">
-            <div className="flex items-center gap-2 mb-4">
-              <Lock className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Logic Weaving — 定义跨域事件触发规则</span>
+        {/* ── 逻辑织入 — read-only display of cross-domain logic ── */}
+        <TabsContent value="logic" className="flex-1 m-0 overflow-hidden">
+          <div className="h-full flex flex-col">
+            <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-card/50 shrink-0">
+              <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">Logic Weaving — 定义跨域事件触发规则</span>
             </div>
-            <pre className="bg-card rounded-lg p-4 text-sm font-mono overflow-x-auto border border-border">
-              <code className="text-foreground">
-                {logicWeaveCode.split('\n').map((line, i) => (
-                  <div key={i} className="flex">
-                    <span className="w-8 text-muted-foreground select-none text-right pr-4">{i + 1}</span>
-                    <span className={cn(
-                      ['WHEN', 'TRIGGER', 'EVALUATE', 'UPDATE', 'RECONCILE'].some((k) => line.includes(k))
-                        ? 'text-primary'
-                        : line.includes('//')
-                        ? 'text-muted-foreground'
-                        : 'text-foreground',
-                    )}>
-                      {line}
-                    </span>
-                  </div>
-                ))}
-              </code>
-            </pre>
+            <div className="flex-1 overflow-hidden">
+              <Editor
+                height="100%"
+                language={SDSL_LANGUAGE_ID}
+                value={logicWeaveCode}
+                theme="semantier-dark"
+                options={{
+                  readOnly: true,
+                  minimap: { enabled: false },
+                  lineNumbers: 'on',
+                  scrollBeyondLastLine: false,
+                  wordWrap: 'off',
+                  fontSize: 13,
+                  fontFamily: 'var(--font-mono, "IBM Plex Mono", monospace)',
+                  padding: { top: 12, bottom: 12 },
+                  renderLineHighlight: 'none',
+                }}
+              />
+            </div>
           </div>
         </TabsContent>
 
-        {/* ── 代码视图 ── */}
-        <TabsContent value="code" className="flex-1 m-0 p-4 overflow-auto">
-          <div className="max-w-4xl">
-            <div className="flex items-center gap-2 mb-4">
-              <Unlock className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">JSON-Schema / Datalog — 底层本体定义</span>
-            </div>
-            <pre className="bg-card rounded-lg p-4 text-sm font-mono overflow-x-auto border border-border">
-              <code className="text-foreground">
-                {jsonSchemaCode.split('\n').map((line, i) => (
-                  <div key={i} className="flex">
-                    <span className="w-8 text-muted-foreground select-none text-right pr-4">{i + 1}</span>
-                    <span className={cn(
-                      line.includes('"$schema"') || line.includes('"namespace"') || line.includes('"version"')
-                        ? 'text-primary'
-                        : line.includes(':') && line.includes('"')
-                        ? 'text-info'
-                        : 'text-foreground',
-                    )}>
-                      {line}
-                    </span>
-                  </div>
-                ))}
-              </code>
-            </pre>
-          </div>
+        {/* ── SDSL 编辑器 — Monaco with SDSL language and ghost text ── */}
+        <TabsContent value="code" className="flex-1 m-0 overflow-hidden">
+          <Editor
+            height="100%"
+            language={SDSL_LANGUAGE_ID}
+            value={buffer}
+            theme="semantier-dark"
+            onMount={handleEditorMount}
+            onChange={(value) => {
+              if (value !== undefined) setBuffer(value)
+            }}
+            options={{
+              minimap: { enabled: false },
+              lineNumbers: 'on',
+              scrollBeyondLastLine: false,
+              wordWrap: 'off',
+              fontSize: 13,
+              fontFamily: 'var(--font-mono, "IBM Plex Mono", monospace)',
+              padding: { top: 12, bottom: 12 },
+              renderLineHighlight: 'line',
+              suggestOnTriggerCharacters: true,
+              glyphMargin: true,
+              folding: true,
+            }}
+          />
         </TabsContent>
       </Tabs>
     </div>
