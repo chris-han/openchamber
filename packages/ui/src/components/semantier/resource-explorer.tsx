@@ -131,8 +131,15 @@ function TreeItem({ node, level, selectedId, onSelect }: TreeItemProps) {
           'flex items-center gap-1 py-1 px-2 cursor-pointer rounded-sm text-sm',
           'hover:bg-secondary/50 transition-colors',
           isSelected && 'bg-secondary text-foreground',
+          !hasChildren && 'cursor-grab active:cursor-grabbing',
         )}
         style={{ paddingLeft: `${level * 12 + 8}px` }}
+        draggable={!hasChildren}
+        onDragStart={(e) => {
+          if (hasChildren) { e.preventDefault(); return }
+          e.dataTransfer.setData('application/openchamber-resource', JSON.stringify(node))
+          e.dataTransfer.effectAllowed = 'copy'
+        }}
         onClick={() => {
           if (hasChildren) setExpanded(!expanded)
           onSelect(node.id, node)

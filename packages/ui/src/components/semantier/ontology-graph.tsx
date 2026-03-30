@@ -623,6 +623,40 @@ function RelationLegend() {
 }
 
 /* ─────────────────────────────────────────────
+   Drop helpers — map resource-explorer TreeNode
+   to graph NodeData
+───────────────────────────────────────────── */
+function treeNodeToGraphNodeType(treeType: string): NodeType {
+  switch (treeType) {
+    case 'ontology':  return 'entity'
+    case 'dimension': return 'dimension'
+    case 'rule':      return 'event'
+    default:          return 'entity'
+  }
+}
+
+function defaultProperties(nodeType: NodeType): { name: string; type: string; required: boolean }[] {
+  switch (nodeType) {
+    case 'entity':
+      return [
+        { name: 'id',     type: 'string', required: true  },
+        { name: 'name',   type: 'string', required: true  },
+        { name: 'status', type: 'enum',   required: false },
+      ]
+    case 'dimension':
+      return [
+        { name: 'id',   type: 'string', required: true },
+        { name: 'name', type: 'string', required: true },
+      ]
+    case 'event':
+      return [
+        { name: 'ruleId',    type: 'string', required: true },
+        { name: 'condition', type: 'string', required: true },
+      ]
+  }
+}
+
+/* ─────────────────────────────────────────────
    Main component
 ───────────────────────────────────────────── */
 interface OntologyGraphProps {
@@ -638,23 +672,95 @@ export function OntologyGraph({ onSelectItem }: OntologyGraphProps) {
   const [allNodes, setAllNodes] = useState<Node[]>(() => init().nodes)
   const [allEdges, setAllEdges] = useState<Edge[]>(() => init().edges)
   const edgeReconnectSuccessful = useRef(true)
+  const rfInstanceRef = useRef<any>(null)
+
+  /* ── Drag-and-drop from resource explorer ── */
+  const onDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'copy'
+  }, [])
+
+  const onDrop = useCallback((event: React.DragEvent) => {
+    event.preventDefault()
+    const raw = event.dataTransfer.getData('application/openchamber-resource')
+    if (!raw || !rfInstanceRef.current) return
+
+    let treeNode: { id: string; name: string; type: string; prefix?: string; version?: string }
+    try { treeNode = JSON.parse(raw) } catch { return }
+    if (!treeNode.id || !treeNode.name || !treeNode.type) return
+
+    // Prevent duplicates — focus existing node instead
+    if (allNodes.some((n) => n.id === treeNode.id)) {
+      rfInstanceRef.current.fitView({
+        nodes: allNodes.filter((n) => n.id === treeNode.id),
+        duration: 400,
+        padding: 0.5,
+      })
+      setAllNodes((nds) =>
+        nds.map((n) => ({
+          ...n,
+          selected: n.id === treeNode.id,
+          data: { ...n.data, isRelated: false, connectState: null },
+        })),
+      )
+      return
+    }
+
+    const position = rfInstanceRef.current.screenToFlowPosition({ x: event.clientX, y: event.clientY })
+    const nodeType = treeNodeToGraphNodeType(treeNode.type)
+
+    const newNode: Node = {
+      id: treeNode.id,
+      position,
+      type: 'custom',
+      data: {
+        id: treeNode.id,
+        label: treeNode.name,
+        type: nodeType,
+        description: `${treeNode.prefix ?? ''}${treeNode.name}`,
+        properties: defaultProperties(nodeType),
+        actions: [],
+      },
+    }
+
+    setAllNodes((nds) => syncPortStates([...nds, newNode], allEdges))
+    onSelectItem?.('node', newNode)
+  }, [allNodes, allEdges, onSelectItem])
 
   /* Sync port icons whenever edge list changes */
   useEffect(() => {
     setAllNodes((nds) => syncPortStates(nds, allEdges))
   }, [allEdges])
 
-  /* ── Delete selected edges on Delete / Backspace key ── */
+  /* ── Delete selected edges/nodes on Delete / Backspace key ── */
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key !== 'Delete' && e.key !== 'Backspace') return
       const tag = (e.target as HTMLElement)?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA') return
+
+      setAllNodes((nds) => {
+        const selectedNodeIds = new Set(nds.filter((n) => n.selected).map((n) => n.id))
+        if (selectedNodeIds.size === 0) return nds
+
+        setAllEdges((eds) =>
+          eds.filter(
+            (ed) =>
+              !ed.selected
+              && !selectedNodeIds.has(ed.source)
+              && !selectedNodeIds.has(ed.target),
+          ),
+        )
+
+        onSelectItem?.('node', null)
+        return nds.filter((n) => !selectedNodeIds.has(n.id))
+      })
+
       setAllEdges((eds) => eds.filter((ed) => !ed.selected))
     }
     document.addEventListener('keydown', handleKey)
     return () => document.removeEventListener('keydown', handleKey)
-  }, [])
+  }, [onSelectItem])
 
   /* ── Change handlers ── */
   const onNodesChange = useCallback((c: NodeChange[]) => setAllNodes((n) => applyNodeChanges(c, n)), [])
@@ -771,10 +877,11 @@ export function OntologyGraph({ onSelectItem }: OntologyGraphProps) {
   }, [allNodes, allEdges])
 
   return (
-    <div className="relative w-full h-full bg-background">
+    <div className="relative w-full h-full bg-background" onDragOver={onDragOver} onDrop={onDrop}>
       <style>{CSS}</style>
 
       <ReactFlow
+        onInit={(instance) => { rfInstanceRef.current = instance }}
         nodes={allNodes}
         edges={allEdges}
         onNodesChange={onNodesChange}
