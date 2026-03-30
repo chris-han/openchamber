@@ -1,5 +1,6 @@
 import React from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
+import { SemantierLayout } from '@/components/layout/SemantierLayout';
 import { VSCodeLayout } from '@/components/layout/VSCodeLayout';
 import { AgentManagerView } from '@/components/views/agent-manager';
 import { ChatView } from '@/components/views';
@@ -536,7 +537,7 @@ function App({ apis }: AppProps) {
             <VoiceProvider>
               <TooltipProvider delayDuration={700} skipDelayDuration={150}>
                 <div className={isDesktopRuntime ? 'h-full text-foreground bg-transparent' : 'h-full text-foreground bg-background'}>
-                  <MainLayout />
+                  <SemantierLayout />
                   <Toaster />
                   <ConfigUpdateOverlay />
                   <AboutDialogWrapper />
