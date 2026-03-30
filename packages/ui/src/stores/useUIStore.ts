@@ -561,6 +561,7 @@ interface UIStore {
   isExpandedInput: boolean;
   reportUsage: boolean;
   shortcutOverrides: Record<string, ShortcutCombo>;
+  currentLayout: 'main' | 'semantier';
 
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
   toggleSidebar: () => void;
@@ -677,6 +678,7 @@ interface UIStore {
   setShortcutOverride: (actionId: string, combo: ShortcutCombo) => void;
   clearShortcutOverride: (actionId: string) => void;
   resetAllShortcutOverrides: () => void;
+  setCurrentLayout: (layout: 'main' | 'semantier') => void;
 }
 
 
@@ -784,6 +786,7 @@ export const useUIStore = create<UIStore>()(
         isExpandedInput: false,
         reportUsage: true,
         shortcutOverrides: {},
+        currentLayout: 'semantier',
 
         setTheme: (theme) => {
           set({ theme });
@@ -1733,6 +1736,10 @@ export const useUIStore = create<UIStore>()(
 
         setExpandedInput: (value) => {
           set({ isExpandedInput: value });
+        },
+
+        setCurrentLayout: (layout) => {
+          set({ currentLayout: layout });
         },
       }),
       {

@@ -108,6 +108,7 @@ function App({ apis }: AppProps) {
   const currentDirectory = useDirectoryStore((state) => state.currentDirectory);
   const setDirectory = useDirectoryStore((state) => state.setDirectory);
   const isSwitchingDirectory = useDirectoryStore((state) => state.isSwitchingDirectory);
+  const currentLayout = useUIStore((state) => state.currentLayout);
   const [showMemoryDebug, setShowMemoryDebug] = React.useState(false);
   const { uiFont, monoFont } = useFontPreferences();
   const refreshGitHubAuthStatus = useGitHubAuthStore((state) => state.refreshStatus);
@@ -537,7 +538,7 @@ function App({ apis }: AppProps) {
             <VoiceProvider>
               <TooltipProvider delayDuration={700} skipDelayDuration={150}>
                 <div className={isDesktopRuntime ? 'h-full text-foreground bg-transparent' : 'h-full text-foreground bg-background'}>
-                  <SemantierLayout />
+                  {currentLayout === 'semantier' ? <SemantierLayout /> : <MainLayout />}
                   <Toaster />
                   <ConfigUpdateOverlay />
                   <AboutDialogWrapper />

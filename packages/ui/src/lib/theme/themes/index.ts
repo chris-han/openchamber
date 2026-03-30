@@ -11,8 +11,8 @@ export const flexokiDarkTheme = withPrColors(flexokiDarkRaw as Theme);
 export const openchamberLightTheme = withPrColors(openchamberLightRaw as Theme);
 export const openchamberDarkTheme = withPrColors(openchamberDarkRaw as Theme);
 
-export const DEFAULT_LIGHT_THEME_ID = 'openchamber-light' as const;
-export const DEFAULT_DARK_THEME_ID = 'openchamber-dark' as const;
+export const DEFAULT_LIGHT_THEME_ID = 'flexoki-light' as const;
+export const DEFAULT_DARK_THEME_ID = 'flexoki-dark' as const;
 
 export const themes: Theme[] = [
   openchamberLightTheme,
