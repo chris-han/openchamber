@@ -1,0 +1,342 @@
+{
+  "version": "1.0",
+  "langconfig_version": "1.0.0",
+  "export_type": "workflow",
+  "metadata": {
+    "source": "semantier",
+    "source_contract": "wsp-v1",
+    "exported_at": "2026-03-31T12:05:00Z",
+    "semantier": {
+      "wsp_version": "1.0",
+      "contract_version": "1.0",
+      "target_profile": "deepagent-py",
+      "approval_checkpoint_id": "c2c-approval-002",
+      "approval_bundle_hash": "sha256:c2c-approval-002-demo",
+      "approval_bundle_uri": "semantier://approval-bundles/c2c-approval-002"
+    }
+  },
+  "workflow": {
+    "name": "C2C Rich Flow",
+    "description": "Richer contract-to-cash import fixture with branching, execution settings, and expanded Semantier context.",
+    "strategy_type": "langgraph_supervisor",
+    "configuration": {
+      "nodes": [
+        {
+          "id": "order-ingest",
+          "type": "agent",
+          "position": {
+            "x": 80,
+            "y": 160
+          },
+          "data": {
+            "id": "order-ingest",
+            "label": "Order Ingest",
+            "name": "Order Ingest",
+            "agentType": "workflow_step",
+            "config": {
+              "name": "Order Ingest",
+              "model": "gpt-4o-mini",
+              "temperature": 0,
+              "system_prompt": "Normalize inbound order and customer master data into the contract-to-cash workflow context.",
+              "enable_memory": true
+            }
+          }
+        },
+        {
+          "id": "credit-check",
+          "type": "agent",
+          "position": {
+            "x": 360,
+            "y": 80
+          },
+          "data": {
+            "id": "credit-check",
+            "label": "Credit Check",
+            "name": "Credit Check",
+            "agentType": "workflow_step",
+            "config": {
+              "name": "Credit Check",
+              "model": "gpt-4o-mini",
+              "temperature": 0,
+              "system_prompt": "Assess customer credit posture and emit credit-approved or hold-required outcome."
+            }
+          }
+        },
+        {
+          "id": "manual-review",
+          "type": "agent",
+          "position": {
+            "x": 640,
+            "y": 40
+          },
+          "data": {
+            "id": "manual-review",
+            "label": "Manual Review",
+            "name": "Manual Review",
+            "agentType": "workflow_step",
+            "config": {
+              "name": "Manual Review",
+              "model": "gpt-4o",
+              "temperature": 0,
+              "system_prompt": "Prepare the exception summary for a manual credit-review checkpoint.",
+              "requires_human_approval": true
+            }
+          }
+        },
+        {
+          "id": "invoice-issue",
+          "type": "agent",
+          "position": {
+            "x": 640,
+            "y": 220
+          },
+          "data": {
+            "id": "invoice-issue",
+            "label": "Invoice Issue",
+            "name": "Invoice Issue",
+            "agentType": "workflow_step",
+            "config": {
+              "name": "Invoice Issue",
+              "model": "gpt-4o-mini",
+              "temperature": 0,
+              "system_prompt": "Issue invoice projection using approved order and fulfillment facts.",
+              "enable_model_routing": true
+            }
+          }
+        },
+        {
+          "id": "cash-application",
+          "type": "agent",
+          "position": {
+            "x": 920,
+            "y": 220
+          },
+          "data": {
+            "id": "cash-application",
+            "label": "Cash Application",
+            "name": "Cash Application",
+            "agentType": "workflow_step",
+            "config": {
+              "name": "Cash Application",
+              "model": "gpt-4o-mini",
+              "temperature": 0,
+              "system_prompt": "Apply cash receipt to open invoice and emit reconciliation state.",
+              "enable_parallel_tools": false
+            }
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge-order-credit",
+          "source": "order-ingest",
+          "target": "credit-check",
+          "type": "default",
+          "label": "order_normalized"
+        },
+        {
+          "id": "edge-credit-review",
+          "source": "credit-check",
+          "target": "manual-review",
+          "type": "conditional",
+          "label": "manual_hold"
+        },
+        {
+          "id": "edge-credit-invoice",
+          "source": "credit-check",
+          "target": "invoice-issue",
+          "type": "conditional",
+          "label": "credit_approved"
+        },
+        {
+          "id": "edge-review-invoice",
+          "source": "manual-review",
+          "target": "invoice-issue",
+          "type": "default",
+          "label": "review_released"
+        },
+        {
+          "id": "edge-invoice-cash",
+          "source": "invoice-issue",
+          "target": "cash-application",
+          "type": "default",
+          "label": "invoice_posted"
+        }
+      ],
+      "max_iterations": 8,
+      "timeout": 900,
+      "memory_enabled": true,
+      "memory_config": {
+        "provider": "langgraph-checkpoint",
+        "config": {
+          "thread_scope": "workflow"
+        }
+      },
+      "rag_enabled": false,
+      "semantier_context": {
+        "ontology_snapshot": {
+          "domain": "contract_to_cash",
+          "entities": [
+            "sales_order",
+            "customer_account",
+            "credit_review",
+            "invoice",
+            "cash_receipt"
+          ],
+          "relationships": [
+            "sales_order.belongs_to.customer_account",
+            "invoice.settled_by.cash_receipt"
+          ]
+        },
+        "rule_source_map": {
+          "order-ingest": "rule_set.nodes[0]",
+          "credit-check": "rule_set.nodes[1]",
+          "manual-review": "rule_set.nodes[2]",
+          "invoice-issue": "rule_set.nodes[3]",
+          "cash-application": "rule_set.nodes[4]"
+        },
+        "simulation_suite": {
+          "scenario_id": "c2c-rich-sim-001",
+          "cases": [
+            "credit-approved-fast-path",
+            "manual-hold-review-path"
+          ],
+          "expected_outcome": "Approved orders reach invoice and cash application with review path preserved for exceptions."
+        }
+      }
+    },
+    "blueprint": {
+      "nodes": [
+        {
+          "id": "order-ingest",
+          "type": "agent",
+          "position": {
+            "x": 80,
+            "y": 160
+          },
+          "data": {
+            "id": "order-ingest",
+            "label": "Order Ingest",
+            "name": "Order Ingest",
+            "agentType": "workflow_step"
+          }
+        },
+        {
+          "id": "credit-check",
+          "type": "agent",
+          "position": {
+            "x": 360,
+            "y": 80
+          },
+          "data": {
+            "id": "credit-check",
+            "label": "Credit Check",
+            "name": "Credit Check",
+            "agentType": "workflow_step"
+          }
+        },
+        {
+          "id": "manual-review",
+          "type": "agent",
+          "position": {
+            "x": 640,
+            "y": 40
+          },
+          "data": {
+            "id": "manual-review",
+            "label": "Manual Review",
+            "name": "Manual Review",
+            "agentType": "workflow_step"
+          }
+        },
+        {
+          "id": "invoice-issue",
+          "type": "agent",
+          "position": {
+            "x": 640,
+            "y": 220
+          },
+          "data": {
+            "id": "invoice-issue",
+            "label": "Invoice Issue",
+            "name": "Invoice Issue",
+            "agentType": "workflow_step"
+          }
+        },
+        {
+          "id": "cash-application",
+          "type": "agent",
+          "position": {
+            "x": 920,
+            "y": 220
+          },
+          "data": {
+            "id": "cash-application",
+            "label": "Cash Application",
+            "name": "Cash Application",
+            "agentType": "workflow_step"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge-order-credit",
+          "source": "order-ingest",
+          "target": "credit-check",
+          "type": "default",
+          "label": "order_normalized"
+        },
+        {
+          "id": "edge-credit-review",
+          "source": "credit-check",
+          "target": "manual-review",
+          "type": "conditional",
+          "label": "manual_hold"
+        },
+        {
+          "id": "edge-credit-invoice",
+          "source": "credit-check",
+          "target": "invoice-issue",
+          "type": "conditional",
+          "label": "credit_approved"
+        },
+        {
+          "id": "edge-review-invoice",
+          "source": "manual-review",
+          "target": "invoice-issue",
+          "type": "default",
+          "label": "review_released"
+        },
+        {
+          "id": "edge-invoice-cash",
+          "source": "invoice-issue",
+          "target": "cash-application",
+          "type": "default",
+          "label": "invoice_posted"
+        }
+      ]
+    }
+  },
+  "deepagents": [
+    {
+      "node_id": "manual-review",
+      "model": "gpt-4o",
+      "system_prompt": "Coordinate manual review and approval outcome packaging.",
+      "subagents": [
+        {
+          "name": "review-summarizer",
+          "role": "Summarize credit-review rationale for operator handoff."
+        }
+      ],
+      "middleware": [
+        {
+          "type": "approval_gate",
+          "config": {
+            "required": true
+          }
+        }
+      ]
+    }
+  ],
+  "custom_tools": []
+}

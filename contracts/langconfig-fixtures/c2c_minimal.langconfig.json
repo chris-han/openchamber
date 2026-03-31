@@ -1,0 +1,184 @@
+{
+  "version": "1.0",
+  "langconfig_version": "1.0.0",
+  "export_type": "workflow",
+  "metadata": {
+    "source": "semantier",
+    "source_contract": "wsp-v1",
+    "exported_at": "2026-03-31T12:00:00Z",
+    "semantier": {
+      "wsp_version": "1.0",
+      "contract_version": "1.0",
+      "target_profile": "deepagent-py",
+      "approval_checkpoint_id": "c2c-approval-001",
+      "approval_bundle_hash": "sha256:c2c-approval-001-demo"
+    }
+  },
+  "workflow": {
+    "name": "C2C Minimal Flow",
+    "description": "Minimal contract-to-cash import fixture projected from approved WSP semantics for LangConfig import testing.",
+    "strategy_type": null,
+    "configuration": {
+      "nodes": [
+        {
+          "id": "sales-order-ingest",
+          "type": "agent",
+          "position": {
+            "x": 80,
+            "y": 120
+          },
+          "data": {
+            "id": "sales-order-ingest",
+            "label": "Sales Order Ingest",
+            "name": "Sales Order Ingest",
+            "agentType": "workflow_step",
+            "config": {
+              "name": "Sales Order Ingest",
+              "model": "gpt-4o-mini",
+              "temperature": 0,
+              "system_prompt": "Validate inbound order facts and normalize them into the contract-to-cash context."
+            }
+          }
+        },
+        {
+          "id": "invoice-issue",
+          "type": "agent",
+          "position": {
+            "x": 360,
+            "y": 120
+          },
+          "data": {
+            "id": "invoice-issue",
+            "label": "Invoice Issue",
+            "name": "Invoice Issue",
+            "agentType": "workflow_step",
+            "config": {
+              "name": "Invoice Issue",
+              "model": "gpt-4o-mini",
+              "temperature": 0,
+              "system_prompt": "Project approved invoice issuance from validated order facts."
+            }
+          }
+        },
+        {
+          "id": "cash-receipt",
+          "type": "agent",
+          "position": {
+            "x": 640,
+            "y": 120
+          },
+          "data": {
+            "id": "cash-receipt",
+            "label": "Cash Receipt",
+            "name": "Cash Receipt",
+            "agentType": "workflow_step",
+            "config": {
+              "name": "Cash Receipt",
+              "model": "gpt-4o-mini",
+              "temperature": 0,
+              "system_prompt": "Capture cash receipt and reconcile it against the issued invoice."
+            }
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge-sales-order-to-invoice",
+          "source": "sales-order-ingest",
+          "target": "invoice-issue",
+          "type": "default",
+          "label": "order_validated"
+        },
+        {
+          "id": "edge-invoice-to-cash",
+          "source": "invoice-issue",
+          "target": "cash-receipt",
+          "type": "default",
+          "label": "invoice_posted"
+        }
+      ],
+      "semantier_context": {
+        "ontology_snapshot": {
+          "domain": "contract_to_cash",
+          "entities": [
+            "sales_order",
+            "invoice",
+            "cash_receipt"
+          ]
+        },
+        "rule_source_map": {
+          "sales-order-ingest": "rule_set.nodes[0]",
+          "invoice-issue": "rule_set.nodes[1]",
+          "cash-receipt": "rule_set.nodes[2]"
+        },
+        "simulation_suite": {
+          "scenario_id": "c2c-minimal-sim-001",
+          "expected_outcome": "Cash receipt reconciles the issued invoice."
+        }
+      }
+    },
+    "blueprint": {
+      "nodes": [
+        {
+          "id": "sales-order-ingest",
+          "type": "agent",
+          "position": {
+            "x": 80,
+            "y": 120
+          },
+          "data": {
+            "id": "sales-order-ingest",
+            "label": "Sales Order Ingest",
+            "name": "Sales Order Ingest",
+            "agentType": "workflow_step"
+          }
+        },
+        {
+          "id": "invoice-issue",
+          "type": "agent",
+          "position": {
+            "x": 360,
+            "y": 120
+          },
+          "data": {
+            "id": "invoice-issue",
+            "label": "Invoice Issue",
+            "name": "Invoice Issue",
+            "agentType": "workflow_step"
+          }
+        },
+        {
+          "id": "cash-receipt",
+          "type": "agent",
+          "position": {
+            "x": 640,
+            "y": 120
+          },
+          "data": {
+            "id": "cash-receipt",
+            "label": "Cash Receipt",
+            "name": "Cash Receipt",
+            "agentType": "workflow_step"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge-sales-order-to-invoice",
+          "source": "sales-order-ingest",
+          "target": "invoice-issue",
+          "type": "default",
+          "label": "order_validated"
+        },
+        {
+          "id": "edge-invoice-to-cash",
+          "source": "invoice-issue",
+          "target": "cash-receipt",
+          "type": "default",
+          "label": "invoice_posted"
+        }
+      ]
+    }
+  },
+  "custom_tools": []
+}
